@@ -1,0 +1,901 @@
+================================================================
+REVENUE RECOGNITION SYSTEM — DEMO SCRIPT
+================================================================
+
+----------------------------------------------------------------
+SETUP
+----------------------------------------------------------------
+
+In a terminal:
+
+    cd RevenueRecognitionSystem.Api
+    dotnet ef database update
+    dotnet run
+
+
+================================================================
+STEP 0 — LOGIN AND AUTHORIZE SWAGGER
+================================================================
+
+[ERROR] Wrong password
+----------------------------------------------------------------
+POST /api/auth/login
+
+    {
+      "login":    "admin",
+      "password": "wrong"
+    }
+
+Expected: 401 Unauthorized
+
+    Invalid login or password.
+
+
+[HAPPY PATH] Log in as admin
+----------------------------------------------------------------
+POST /api/auth/login
+
+    {
+      "login":    "admin",
+      "password": "Admin123!"
+    }
+
+Expected: 200 OK
+
+    {
+      "accessToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+      "expiresAt":   "2026-06-16T16:32:00.000Z",
+      "role":        "Admin"
+    }
+
+
+================================================================
+CUSTOMERS — /api/customers
+================================================================
+
+STEP 1 — LIST THE SEEDED CUSTOMERS
+----------------------------------------------------------------
+GET /api/customers
+
+Expected: 200 OK
+
+    [
+      {
+        "customerId":  1,
+        "type":        "Individual",
+        "display":     "John Doe",
+        "email":       "john@example.com",
+        "phoneNumber": "+48123456789",
+        "isDeleted":   false
+      },
+      {
+        "customerId":  2,
+        "type":        "Company",
+        "display":     "ABC Sp. z o.o.",
+        "email":       "office@abc.pl",
+        "phoneNumber": "+48222333444",
+        "isDeleted":   false
+      }
+    ]
+
+
+STEP 2 — CREATE A NEW INDIVIDUAL CUSTOMER
+----------------------------------------------------------------
+
+[ERROR] PESEL not 11 digits
+----------------------------------------------------------------
+POST /api/customers/individual
+
+    {
+      "firstName":   "X",
+      "lastName":    "Y",
+      "pesel":       "abc",
+      "address":     "addr",
+      "email":       "x@example.com",
+      "phoneNumber": "+48000000000"
+    }
+
+Expected: 400 Bad Request
+
+    {
+      "errors": {
+        "Pesel": [ "PESEL must be exactly 11 digits." ]
+      }
+    }
+
+[HAPPY PATH] Add Anna
+----------------------------------------------------------------
+POST /api/customers/individual
+
+    {
+      "firstName":   "Anna",
+      "lastName":    "Kowalska",
+      "pesel":       "90010112345",
+      "address":     "Wesoła 1, Warszawa",
+      "email":       "anna@example.com",
+      "phoneNumber": "+48555111222"
+    }
+
+Expected: 201 Created
+
+    { "id": 3 }
+
+[ERROR] Duplicate PESEL
+----------------------------------------------------------------
+POST /api/customers/individual
+
+    {
+      "firstName":   "Someone",
+      "lastName":    "Else",
+      "pesel":       "90010112345",
+      "address":     "addr",
+      "email":       "x@example.com",
+      "phoneNumber": "+48000000000"
+    }
+
+Expected: 409 Conflict
+
+    { "message": "Individual with PESEL '90010112345' already exists." }
+
+
+STEP 3 — CREATE A NEW COMPANY
+----------------------------------------------------------------
+
+[ERROR] KRS not 10 digits
+----------------------------------------------------------------
+POST /api/customers/company
+
+    {
+      "companyName": "Bad",
+      "krs":         "123",
+      "address":     "addr",
+      "email":       "x@example.com",
+      "phoneNumber": "+48000000000"
+    }
+
+Expected: 400 Bad Request
+
+    {
+      "errors": {
+        "Krs": [ "KRS must be exactly 10 digits." ]
+      }
+    }
+
+[HAPPY PATH] Add Acme
+----------------------------------------------------------------
+POST /api/customers/company
+
+    {
+      "companyName": "Acme Sp. z o.o.",
+      "krs":         "0000999888",
+      "address":     "Marszałkowska 5, Warszawa",
+      "email":       "office@acme.pl",
+      "phoneNumber": "+48222000111"
+    }
+
+Expected: 201 Created
+
+    { "id": 4 }
+
+
+STEP 4a — UPDATE ANNA (admin only)
+----------------------------------------------------------------
+
+[ERROR] Non-existent id
+----------------------------------------------------------------
+PUT /api/customers/individual/999
+
+    {
+      "firstName":   "X",
+      "lastName":    "Y",
+      "address":     "addr",
+      "email":       "x@example.com",
+      "phoneNumber": "+48000000000"
+    }
+
+Expected: 404 Not Found
+
+    { "message": "Individual customer with id=999 was not found." }
+
+[HAPPY PATH] Update Anna
+----------------------------------------------------------------
+PUT /api/customers/individual/3
+
+    {
+      "firstName":   "Anna",
+      "lastName":    "Kowalska",
+      "address":     "Krakowska 99, Kraków",
+      "email":       "anna@example.com",
+      "phoneNumber": "+48555000999"
+    }
+
+Expected: 204 No Content
+
+
+STEP 4b — UPDATE ACME (admin only)
+----------------------------------------------------------------
+
+[ERROR] Non-existent id
+----------------------------------------------------------------
+PUT /api/customers/company/999
+
+    {
+      "companyName": "Acme International Sp. z o.o.",
+      "address":     "Nowa Ulica 7, Warszawa",
+      "email":       "contact@acme.pl",
+      "phoneNumber": "+48999888777"
+    }
+
+Expected: 404 Not Found
+
+    { "message": "Company customer with id=999 was not found." }
+
+[HAPPY PATH] Update Acme
+----------------------------------------------------------------
+PUT /api/customers/company/4
+
+    {
+      "companyName": "Acme International Sp. z o.o.",
+      "address":     "Nowa Ulica 7, Warszawa",
+      "email":       "contact@acme.pl",
+      "phoneNumber": "+48999888777"
+    }
+
+Expected: 204 No Content
+
+
+STEP 5 — SOFT-DELETE AN INDIVIDUAL (admin only)
+----------------------------------------------------------------
+
+[ERROR] Non-existent id
+----------------------------------------------------------------
+DELETE /api/customers/individual/999
+
+Expected: 404 Not Found
+
+    { "message": "Individual customer with id=999 was not found." }
+
+[HAPPY PATH] Soft-delete Anna
+----------------------------------------------------------------
+DELETE /api/customers/individual/3
+
+Expected: 204 No Content
+
+Now GET /api/customers — id=3 row stays, all fields overwritten,
+isDeleted=true, PESEL preserved:
+
+    {
+      "customerId":  3,
+      "type":        "Individual",
+      "display":     "DELETED DELETED",
+      "email":       "deleted@example.invalid",
+      "phoneNumber": "000000000",
+      "isDeleted":   true
+    }
+
+
+================================================================
+CONTRACTS — /api/contracts
+================================================================
+
+STEP 6 — CREATE A CONTRACT FOR JOHN DOE (id=1) + ACCPRO (id=1)
+----------------------------------------------------------------
+Use dates ~ today to today+10 (length must be 3–30 days).
+
+[ERROR] Customer does not exist
+----------------------------------------------------------------
+POST /api/contracts
+
+    {
+      "customerId":             999,
+      "softwareId":             1,
+      "softwareVersion":        "2026.1",
+      "startDate":              "2026-06-16",
+      "endDate":                "2026-06-26",
+      "additionalSupportYears": 0
+    }
+
+Expected: 404 Not Found
+
+    { "message": "Customer with id=999 was not found." }
+
+[ERROR] Software does not exist
+----------------------------------------------------------------
+POST /api/contracts
+
+    {
+      "customerId":             1,
+      "softwareId":             999,
+      "softwareVersion":        "2026.1",
+      "startDate":              "2026-06-16",
+      "endDate":                "2026-06-26",
+      "additionalSupportYears": 0
+    }
+
+Expected: 404 Not Found
+
+    { "message": "Software with id=999 was not found." }
+
+[ERROR] Length below 3 days
+----------------------------------------------------------------
+POST /api/contracts
+
+    {
+      "customerId":             1,
+      "softwareId":             1,
+      "softwareVersion":        "2026.1",
+      "startDate":              "2026-06-16",
+      "endDate":                "2026-06-17",
+      "additionalSupportYears": 0
+    }
+
+Expected: 400 Bad Request
+
+    { "message": "Contract length must be between 3 and 30 days." }
+
+[ERROR] Length above 30 days
+----------------------------------------------------------------
+POST /api/contracts
+
+    {
+      "customerId":             1,
+      "softwareId":             1,
+      "softwareVersion":        "2026.1",
+      "startDate":              "2026-06-16",
+      "endDate":                "2026-08-16",
+      "additionalSupportYears": 0
+    }
+
+Expected: 400 Bad Request
+
+    { "message": "Contract length must be between 3 and 30 days." }
+
+[HAPPY PATH] Create the contract (5000 PLN, no discounts)
+----------------------------------------------------------------
+POST /api/contracts
+
+    {
+      "customerId":             1,
+      "softwareId":             1,
+      "softwareVersion":        "2026.1",
+      "startDate":              "2026-06-16",
+      "endDate":                "2026-06-26",
+      "additionalSupportYears": 0
+    }
+
+Expected: 201 Created
+
+    {
+      "contractId":      1,
+      "customerId":      1,
+      "softwareId":      1,
+      "softwareVersion": "2026.1",
+      "startDate":       "2026-06-16T00:00:00",
+      "endDate":         "2026-06-26T00:00:00",
+      "supportYears":    1,
+      "totalPrice":      5000.00,
+      "amountPaid":      0.00,
+      "status":          "Pending",
+      "signedAt":        null
+    }
+
+[ERROR] Active contract already exists for same software
+----------------------------------------------------------------
+POST /api/contracts  (same body as the happy path)
+
+Expected: 409 Conflict
+
+    { "message": "Customer already has an active contract or subscription for this product." }
+
+
+STEP 7 — PAY THE CONTRACT (1, TotalPrice=5000, Pending)
+----------------------------------------------------------------
+
+[ERROR] Overpay before any payment
+----------------------------------------------------------------
+POST /api/contracts/1/payments
+
+    { "amount": 9999.00 }
+
+Expected: 400 Bad Request
+
+    { "message": "Payment exceeds remaining amount. Remaining: 5000." }
+
+[HAPPY PATH] First partial payment — 1500
+----------------------------------------------------------------
+POST /api/contracts/1/payments
+
+    { "amount": 1500.00 }
+
+Expected: 200 OK
+
+    {
+      "contractId":  1,
+      "totalPrice":  5000.00,
+      "amountPaid":  1500.00,
+      "status":      "Pending",
+      "signedAt":    null
+    }
+
+[ERROR] Overpay after 1500 already paid (remaining = 3500)
+----------------------------------------------------------------
+POST /api/contracts/1/payments
+
+    { "amount": 4000.00 }
+
+Expected: 400 Bad Request
+
+    { "message": "Payment exceeds remaining amount. Remaining: 3500." }
+
+[HAPPY PATH] Second partial payment — 2000
+----------------------------------------------------------------
+POST /api/contracts/1/payments
+
+    { "amount": 2000.00 }
+
+Expected: 200 OK
+
+    {
+      "contractId":  1,
+      "amountPaid":  3500.00,
+      "status":      "Pending"
+    }
+
+[ERROR] Overpay after 3500 paid (remaining = 1500)
+----------------------------------------------------------------
+POST /api/contracts/1/payments
+
+    { "amount": 9999.00 }
+
+Expected: 400 Bad Request
+
+    { "message": "Payment exceeds remaining amount. Remaining: 1500." }
+
+[HAPPY PATH] Final payment — 1500 → Signed
+----------------------------------------------------------------
+POST /api/contracts/1/payments
+
+    { "amount": 1500.00 }
+
+Expected: 200 OK
+
+    {
+      "contractId":  1,
+      "totalPrice":  5000.00,
+      "amountPaid":  5000.00,
+      "status":      "Signed",
+      "signedAt":    "2026-06-16T15:42:11Z"
+    }
+
+[ERROR] Paying a signed contract
+----------------------------------------------------------------
+POST /api/contracts/1/payments
+
+    { "amount": 100.00 }
+
+Expected: 409 Conflict
+
+    { "message": "Contract is already fully paid." }
+
+
+STEP 8 — GET A CONTRACT
+----------------------------------------------------------------
+
+[ERROR] Non-existent contract
+----------------------------------------------------------------
+GET /api/contracts/9999
+
+Expected: 404 Not Found
+
+    { "message": "Contract with id=9999 was not found." }
+
+[HAPPY PATH] GET the signed contract
+----------------------------------------------------------------
+GET /api/contracts/1
+
+Expected: 200 OK  (same shape as Step 7's final response)
+
+
+STEP 9 — DELETE A CONTRACT
+----------------------------------------------------------------
+
+[ERROR] Cannot delete a signed contract
+----------------------------------------------------------------
+DELETE /api/contracts/1
+
+Expected: 409 Conflict
+
+    { "message": "Cannot delete a signed contract." }
+
+
+STEP 10 — CREATE 2nd CONTRACT (RETURNING CUSTOMER +5%)
+----------------------------------------------------------------
+John Doe is now returning (1 signed contract). New contract for
+ClassNote (softwareId=2, price 1200) + 1 extra support year.
+
+POST /api/contracts
+
+    {
+      "customerId":             1,
+      "softwareId":             2,
+      "softwareVersion":        "10.4",
+      "startDate":              "2026-06-16",
+      "endDate":                "2026-06-26",
+      "additionalSupportYears": 1
+    }
+
+Expected: 201 Created
+
+    {
+      "contractId":   2,
+      "supportYears": 2,
+      "totalPrice":   2140.00,
+      "status":       "Pending"
+    }
+
+1200 × 0.95 (returning) = 1140, plus 1 × 1000 support = 2140.
+
+[HAPPY PATH] Delete this Pending contract
+----------------------------------------------------------------
+DELETE /api/contracts/2
+
+Expected: 204 No Content
+
+
+================================================================
+SUBSCRIPTIONS — /api/subscriptions
+================================================================
+
+STEP 11 — CREATE SUBSCRIPTION FOR ABC (id=2) ON ACCPRO (id=1)
+----------------------------------------------------------------
+
+[ERROR] Period 0 months
+----------------------------------------------------------------
+POST /api/subscriptions
+
+    {
+      "customerId":          2,
+      "softwareId":          1,
+      "name":                "Bad",
+      "renewalPeriodMonths": 0,
+      "renewalPrice":        100.00
+    }
+
+Expected: 400 Bad Request
+
+    {
+      "errors": {
+        "RenewalPeriodMonths": [ "Renewal period must be between 1 and 24 months." ]
+      }
+    }
+
+[ERROR] Period above 24 months
+----------------------------------------------------------------
+POST /api/subscriptions
+
+    {
+      "customerId":          2,
+      "softwareId":          1,
+      "name":                "Too long",
+      "renewalPeriodMonths": 25,
+      "renewalPrice":        100.00
+    }
+
+Expected: 400 Bad Request  (same shape)
+
+[ERROR] Customer not found
+----------------------------------------------------------------
+POST /api/subscriptions
+
+    {
+      "customerId":          999,
+      "softwareId":          1,
+      "name":                "S",
+      "renewalPeriodMonths": 1,
+      "renewalPrice":        200.00
+    }
+
+Expected: 404 Not Found
+
+    { "message": "Customer with id=999 was not found." }
+
+[HAPPY PATH] Create the subscription (first payment 200 PLN)
+----------------------------------------------------------------
+POST /api/subscriptions
+
+    {
+      "customerId":          2,
+      "softwareId":          1,
+      "name":                "AccPro Monthly",
+      "renewalPeriodMonths": 1,
+      "renewalPrice":        200.00
+    }
+
+Expected: 201 Created
+
+    {
+      "subscriptionId":      1,
+      "name":                "AccPro Monthly",
+      "customerId":          2,
+      "softwareId":          1,
+      "renewalPeriodMonths": 1,
+      "renewalPrice":        200.00,
+      "currentPeriodEnd":    "2026-07-16T15:50:00Z",
+      "status":              "Active"
+    }
+
+[ERROR] Active subscription already exists for the same product
+----------------------------------------------------------------
+POST /api/subscriptions  (same body as happy path)
+
+Expected: 409 Conflict
+
+    { "message": "Customer already has an active subscription or contract for this product." }
+
+
+STEP 12 — RENEW SUBSCRIPTION 1
+----------------------------------------------------------------
+
+    Server:   localhost,1433
+    User:     SA
+    Password: Padigon07#
+    Database: RevenueRecognition
+
+Test it with:  SELECT 1;
+
+
+[ERROR] Right amount but current period already paid
+----------------------------------------------------------------
+POST /api/subscriptions/1/payments
+
+    { "amount": 190.00 }
+
+Expected: 409 Conflict
+
+    { "message": "Current renewal period has already been paid." }
+
+
+>>> BACKDATE THE SUBSCRIPTION <<<
+
+USE RevenueRecognition;
+
+UPDATE Subscription
+SET StartDate        = DATEADD(MONTH, -1, GETUTCDATE()),
+    CurrentPeriodEnd = DATEADD(MINUTE, -1, GETUTCDATE())
+WHERE SubscriptionId = 1;
+
+UPDATE SubscriptionPayment
+SET PeriodStart = DATEADD(MONTH, -1, GETUTCDATE()),
+    PeriodEnd   = DATEADD(MINUTE, -1, GETUTCDATE()),
+    PaidAt      = DATEADD(MONTH, -1, GETUTCDATE())
+WHERE SubscriptionId = 1;
+
+
+[ERROR] Wrong amount (after backdate, we're in period 2 unpaid)
+----------------------------------------------------------------
+POST /api/subscriptions/1/payments
+
+    { "amount": 200.00 }
+
+Expected: 400 Bad Request
+
+    { "message": "Renewal payment must equal 190 (loyal customer discount applied)." }
+
+
+[HAPPY PATH] Right amount — period 2 accepted
+----------------------------------------------------------------
+POST /api/subscriptions/1/payments
+
+    { "amount": 190.00 }
+
+Expected: 200 OK
+
+    {
+      "subscriptionId":      1,
+      "status":              "Active",
+      "currentPeriodEnd":    "<advanced by 1 month>"
+    }
+
+
+[ERROR] Pay again immediately — period 2 just paid
+----------------------------------------------------------------
+POST /api/subscriptions/1/payments
+
+    { "amount": 190.00 }
+
+Expected: 409 Conflict
+
+    { "message": "Current renewal period has already been paid." }
+
+
+>>> SECOND BACKDATE <<<
+
+USE RevenueRecognition;
+
+DELETE FROM SubscriptionPayment
+WHERE SubscriptionId = 1
+  AND PeriodStart > DATEADD(MONTH, -3, GETUTCDATE());
+
+UPDATE Subscription
+SET StartDate        = DATEADD(MONTH, -3, GETUTCDATE()),
+    CurrentPeriodEnd = DATEADD(MONTH, -2, GETUTCDATE())
+WHERE SubscriptionId = 1;
+
+UPDATE SubscriptionPayment
+SET PeriodStart = DATEADD(MONTH, -3, GETUTCDATE()),
+    PeriodEnd   = DATEADD(MONTH, -2, GETUTCDATE()),
+    PaidAt      = DATEADD(MONTH, -3, GETUTCDATE())
+WHERE SubscriptionId = 1;
+
+
+[ERROR] Overdue — periods 2 and 3 were never paid → cancels
+----------------------------------------------------------------
+POST /api/subscriptions/1/payments
+
+    { "amount": 190.00 }
+
+Expected: 409 Conflict
+
+    { "message": "Subscription is overdue (a previous renewal period was not paid). It has been cancelled." }
+
+
+[ERROR] Try to pay a cancelled subscription
+----------------------------------------------------------------
+POST /api/subscriptions/1/payments
+
+    { "amount": 190.00 }
+
+Expected: 409 Conflict
+
+    { "message": "Subscription is cancelled." }
+
+
+STEP 13 — GET A SUBSCRIPTION
+----------------------------------------------------------------
+
+[ERROR] Non-existent subscription
+----------------------------------------------------------------
+GET /api/subscriptions/9999
+
+Expected: 404 Not Found
+
+    { "message": "Subscription with id=9999 was not found." }
+
+[HAPPY PATH] GET the active subscription
+----------------------------------------------------------------
+GET /api/subscriptions/1
+
+Expected: 200 OK
+
+    {
+      "subscriptionId":      1,
+      "name":                "AccPro Monthly",
+      "customerId":          2,
+      "softwareId":          1,
+      "renewalPeriodMonths": 1,
+      "renewalPrice":        200.00,
+      "currentPeriodEnd":    "2026-07-16T15:50:00Z",
+      "status":              "Active"
+    }
+
+
+================================================================
+REVENUE — /api/revenue
+================================================================
+
+STEP 14 — CURRENT REVENUE
+----------------------------------------------------------------
+
+[HAPPY PATH] Whole company, PLN
+----------------------------------------------------------------
+GET /api/revenue/current
+
+Expected: 200 OK
+
+    {
+      "amount":     5200.00,
+      "currency":   "PLN",
+      "scope":      "Current",
+      "softwareId": null
+    }
+
+5000 (signed contract from Step 7) + 200 (first sub payment from
+Step 11) = 5200.
+
+[HAPPY PATH] Filter by softwareId
+----------------------------------------------------------------
+GET /api/revenue/current?softwareId=1
+
+Expected: 200 OK
+
+    {
+      "amount":     5200.00,
+      "currency":   "PLN",
+      "scope":      "Current",
+      "softwareId": 1
+    }
+
+[HAPPY PATH] Convert to EUR via NBP
+----------------------------------------------------------------
+GET /api/revenue/current?currency=EUR
+
+Expected: 200 OK
+
+    {
+      "amount":     1219.31,
+      "currency":   "EUR",
+      "scope":      "Current",
+      "softwareId": null
+    }
+
+
+STEP 15 — PREDICTED REVENUE
+----------------------------------------------------------------
+
+[HAPPY PATH] Whole company, PLN
+----------------------------------------------------------------
+GET /api/revenue/predicted
+
+Expected: 200 OK
+
+    {
+      "amount":     7400.00,
+      "currency":   "PLN",
+      "scope":      "Predicted",
+      "softwareId": null
+    }
+
+5000 (signed) + 200 × 12 (12 forecasted monthly renewals at
+200 PLN) = 5000 + 2400 = 7400.
+
+[HAPPY PATH] Filter softwareId + currency EUR
+----------------------------------------------------------------
+GET /api/revenue/predicted?softwareId=1&currency=EUR
+
+Expected: 200 OK
+
+
+================================================================
+AUTH EDGE CASES
+================================================================
+
+STEP 16 — NO TOKEN
+----------------------------------------------------------------
+In the Authorize dialog, click Logout. Then:
+
+GET /api/customers
+
+Expected: 401 Unauthorized
+(empty body, header www-authenticate: Bearer)
+
+
+STEP 17 — USER ROLE ON ADMIN-ONLY ACTION
+----------------------------------------------------------------
+Login as user / User123!, re-Authorize Swagger, then:
+
+PUT /api/customers/individual/1
+
+    {
+      "firstName":   "X",
+      "lastName":    "Y",
+      "address":     "addr",
+      "email":       "x@x.com",
+      "phoneNumber": "+48000000000"
+    }
+
+Expected: 403 Forbidden (empty body)
+
+Also try:
+PUT /api/customers/company/2 
+
+Expected: 403 Forbidden (empty body)
+
+And:
+DELETE /api/customers/individual/1
+
+Expected: 403 Forbidden (empty body)
+
+
+================================================================
+END OF DEMO
+================================================================
