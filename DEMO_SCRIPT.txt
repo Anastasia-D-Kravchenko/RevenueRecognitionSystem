@@ -638,7 +638,7 @@ STEP 12 — RENEW SUBSCRIPTION 1
 
     Server:   localhost,1433
     User:     SA
-    Password: Padigon07#
+    Password: YourStrong!Passw0rd
     Database: RevenueRecognition
 
 Test it with:  SELECT 1;
